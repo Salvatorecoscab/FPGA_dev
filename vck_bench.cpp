@@ -22,23 +22,24 @@ int main() {
     std::vector<char> host_data(data_size, 0xAB);
 
     // --- INICIO DE LA PRUEBA DE LATENCIA ---
-    auto start = std::chrono::high_resolution_clock::now();
+// Reemplaza la parte del loop en tu vck_bench.cpp:
+auto bo_in = xrt::bo(device, data_size, xrt::bo::flags::normal, 0);
+auto bo_in_map = bo_in.map<char*>(); // Acceso directo a la memoria de la FPGA
 
-    // ETAPA 1: Pre-procesamiento en CPU (Simulado)
-    for(size_t i = 0; i < 1000; ++i) host_data[i] ^= 0xFF; 
+auto start = std::chrono::high_resolution_clock::now();
 
-    // ETAPA 2: Transferencia a FPGA
-    bo_in.write(host_data.data());
-    bo_in.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_TO_DEVICE);
+// ETAPA 1: Pre-procesamiento DIRECTO en memoria compartida
+for(size_t i = 0; i < 1000; ++i) {
+    bo_in_map[i] = i % 256; // No hay copy, escribes directo al buffer de la FPGA
+}
 
-    // ETAPA 3: Ejecución (Aquí llamarías a la DPU)
-    // Nota: Como no tenemos el .xmodel, mediremos la velocidad del bus y la respuesta
-    // de sincronización del hardware, que es el "piso" de latencia.
+// ETAPA 2: Solo sincronizar (avisa al hardware que los datos están listos)
+bo_in.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_TO_DEVICE);
 
-    bo_out.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_FROM_DEVICE);
-    bo_out.read(host_data.data());
+// ETAPA 3: El "piso" de latencia de hardware
+bo_in.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    auto end = std::chrono::high_resolution_clock::now();
+auto end = std::chrono::high_resolution_clock::now();
     // --- FIN DE LA PRUEBA ---
 
     std::chrono::duration<double, std::micro> diff = end - start;
